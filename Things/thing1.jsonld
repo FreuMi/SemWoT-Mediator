@@ -1,0 +1,68 @@
+{
+  "@context": [
+    "https://www.w3.org/2019/wot/td/v1",
+    "https://www.w3.org/2022/wot/td/v1.1",
+    {
+      "@language": "en"
+    }
+  ],
+  "id": "urn:uuid:0804d572-cce8-422a-bb7c-4412fcd56f06",
+  "@type": "Thing",
+  "title": "Flower",
+  "description": "A Xiaomi Flower Care Sensor.",
+  "securityDefinitions": {
+    "nosec_sc": {
+      "scheme": "nosec"
+    }
+  },
+  "security": "basic_sc",
+  "properties": {
+    "temp": {
+      "type": "string",
+      "observable": false,
+      "readOnly": true,
+      "writeOnly": false,
+      "description": "In degrees Celsius",
+      "forms": [
+        {
+          "href": "http://${ip}:${port}/temp",
+          "contentType": "application/json",
+          "op": "readproperty",
+          "htv:methodName": "GET"
+        }
+      ]
+    },
+    "power": {
+      "type": "string",
+      "observable": false,
+      "readOnly": false,
+      "writeOnly": true,
+      "description": "Change power state",
+      "forms": [
+        {
+          "href": "http://${ip}:${port}/power",
+          "contentType": "application/json",
+          "op": "writeproperty",
+          "htv:methodName": "PUT"
+        }
+      ]
+    }
+  },
+  "actions": {
+    "precisionMode": {
+      "description": "Enable precision mode.",
+      "input": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "forms": [
+        {
+          "href": "http://${ip}:${port}/precisionMode",
+          "contentType": "application/json",
+          "op": "invokeaction"
+        }
+      ]
+    }
+  }
+}
