@@ -5,6 +5,9 @@ const bodyParser = require("body-parser");
 const jsonld = require("jsonld");
 const axios = require("axios");
 const urdf = require("urdf");
+const flexrml = require("flexrml-node");
+
+const fs = require("fs");
 const { Parser, DataFactory, Writer } = require("n3");
 const { namedNode, blankNode, literal, quad } = DataFactory;
 
@@ -177,7 +180,7 @@ async function getWritePropertyInput(nquads) {
   return parsedResult;
 }
 
-async function getActionInput(nquads) {
+async function getDatatype(nquads) {
   await urdf.clear();
   // Get type
   let sparql_query = `
@@ -198,7 +201,13 @@ async function getActionInput(nquads) {
   if (typeof typeResult == "undefined") {
     return "";
   }
+  return typeResult;
+}
 
+async function getActionInput(nquads) {
+  const typeResult = await getDatatype(nquads);
+
+  await urdf.clear();
   // Get value
   sparql_query = `
           PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -244,105 +253,58 @@ async function addWritePropertyPaths(thingName, propertyName, thing) {
   });
 }
 
-const writerEndAsync = (quads) => {
-  const prefixes = {
-    prefixes: {
-      aio: "https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#",
-      rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-      xsd: "http://www.w3.org/2001/XMLSchema#",
-    },
-  };
-  const writer = new Writer(prefixes);
-  quads.forEach((quad) => writer.addQuad(quad));
-
-  return new Promise((resolve, reject) => {
-    writer.end((error, result) => {
-      if (error) {
-        reject(error);
-      } else {
-        resolve(result);
-      }
-    });
-  });
-};
-
-async function extendRDFdata(inputRDF) {
-  // Parse existing RDF data
-  const parser = new Parser();
-  const quads = parser.parse(inputRDF);
-
-  // Get Subject
-  let foundBlankNode = null;
-  const targetType =
-    "https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#ActionInvocationInteraction";
-  const rdfType = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-
-  for (const quad of quads) {
-    if (quad._predicate.id === rdfType && quad._object.id === targetType) {
-      foundBlankNode = quad._subject;
-      break;
-    }
-  }
-
-  if (!foundBlankNode) {
-    console.log("error");
-  }
-
-  // Add status
-  const statusQuad = quad(
-    blankNode(foundBlankNode.id.replace(/[_:]/g, "")),
-    namedNode("https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#hasStatus"),
-    literal("initialized")
-  );
-
-  // Add the new quad to set of quads
-  quads.push(statusQuad);
-
-  // Add timestamp
+async function extendActionRDFdata(nquads, inputValue) {
+  const status = "initialized";
   const ts = new Date().toISOString();
-  const timestampQuad = quad(
-    blankNode(foundBlankNode.id.replace(/[_:]/g, "")),
-    namedNode("https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#hasResultTime"),
-    literal(ts)
-  );
+  const typeResult = await getDatatype(nquads);
+  const datatype = typeResult.split("#").pop();
 
-  quads.push(timestampQuad);
+  // Mapping Rule
+  let rmlRule = fs.readFileSync("./RML/actionTemplate.ttl", {
+    encoding: "utf8",
+    flag: "r",
+  });
 
-  // Serialize the updated quads to Turtle format
-  const outputRDF = await writerEndAsync(quads);
+  rmlRule = rmlRule.replace("${datatype}", datatype);
+
+  // Input Data
+  const csv_data_1 = `id,timestamp,status,input
+0,${ts},${status},${inputValue}`;
+
+  // Data structure fore mapping
+  const input = {
+    csv_data_1: csv_data_1,
+  };
+
+  const outputRDF = await flexrml.mapData(input, rmlRule);
+
   return outputRDF;
 }
 
-async function updateRDFstatus(inputRDF, status) {
-  // Parse existing RDF data
-  const parser = new Parser();
-  const quads = parser.parse(inputRDF);
-
-  // Update status
-  for (const quad of quads) {
-    if (
-      quad._predicate.id ===
-      "https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#hasStatus"
-    ) {
-      quad._object = literal(status);
-      break;
-    }
-  }
-
-  // Update timestamp
+async function updateRDFstatus(status, inputValue, nquads) {
   const ts = new Date().toISOString();
-  for (const quad of quads) {
-    if (
-      quad._predicate.id ===
-      "https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#hasResultTime"
-    ) {
-      quad._object = literal(ts);
-      break;
-    }
-  }
+  const typeResult = await getDatatype(nquads);
+  const datatype = typeResult.split("#").pop();
 
-  // Serialize the updated quads to Turtle format
-  const outputRDF = await writerEndAsync(quads);
+  // Mapping Rule
+  let rmlRule = fs.readFileSync("./RML/actionTemplate.ttl", {
+    encoding: "utf8",
+    flag: "r",
+  });
+
+  rmlRule = rmlRule.replace("${datatype}", datatype);
+
+  // Input Data
+  const csv_data_1 = `id,timestamp,status,input
+0,${ts},${status},${inputValue}`;
+
+  // Data structure fore mapping
+  const input = {
+    csv_data_1: csv_data_1,
+  };
+
+  const outputRDF = await flexrml.mapData(input, rmlRule);
+
   return outputRDF;
 }
 
@@ -352,24 +314,25 @@ async function addActionPaths(thingName, propertyName, thing) {
     // Get request data
     const RDFrequest = req.body.toString("utf-8");
 
+    // Query data to write
+    const inputValue = await getActionInput(RDFrequest);
+
     // Generate location uri
     actionCounter++;
     res.location("/actions/" + actionCounter);
 
-    let outputRDF = await extendRDFdata(RDFrequest);
+    let outputRDF = await extendActionRDFdata(RDFrequest, inputValue);
     // Add resource to express
     app.get(`/actions/${actionCounter}`, async function (req, res) {
       rdfData = res.send(outputRDF);
     });
     res.send();
 
-    // Query data to write
-    const inputValue = await getActionInput(RDFrequest);
     // Update Status to running
-    outputRDF = await updateRDFstatus(outputRDF, "running");
+    outputRDF = await updateRDFstatus("running", inputValue, RDFrequest);
     await thing.invokeAction(`${propertyName}`, inputValue);
     // Update Status to finished
-    outputRDF = await updateRDFstatus(outputRDF, "finished");
+    outputRDF = await updateRDFstatus("finished", inputValue, RDFrequest);
   });
 }
 

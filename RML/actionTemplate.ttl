@@ -70,6 +70,6 @@
     rr:objectMap [ 
         rr:template "{input}" ;
 		rr:termType rr:Literal ;
-		rr:datatype xsd:decimal
+		rr:datatype xsd:${datatype}
     ]
   ] .
