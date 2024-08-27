@@ -234,6 +234,33 @@ async function addReadPropertyPaths(thingName, propertyName, thing) {
   });
 }
 
+const toTTL = (inputRDF) => {
+  // Parse existing RDF data
+  const parser = new Parser();
+  const quads = parser.parse(inputRDF);
+
+  const prefixes = {
+    prefixes: {
+      aio: "https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#",
+      rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+      xsd: "http://www.w3.org/2001/XMLSchema#",
+      qudt: "https://qudt.org/2.1/schema/qudt#",
+    },
+  };
+  const writer = new Writer(prefixes);
+  quads.forEach((quad) => writer.addQuad(quad));
+
+  return new Promise((resolve, reject) => {
+    writer.end((error, result) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve(result);
+      }
+    });
+  });
+};
+
 async function addWritePropertyPaths(thingName, propertyName, thing) {
   console.log(`Added: /${thingName}/${propertyName}`);
   app.put(`/${thingName}/${propertyName}`, async function (req, res) {
@@ -278,7 +305,9 @@ async function extendActionRDFdata(nquads, inputValue) {
 
   const outputRDF = await flexrml.mapData(input, rmlRule);
 
-  return outputRDF;
+  const outputRDFttl = await toTTL(outputRDF);
+
+  return outputRDFttl;
 }
 
 async function updateRDFstatus(status, inputValue, nquads) {
@@ -305,7 +334,9 @@ async function updateRDFstatus(status, inputValue, nquads) {
 
   const outputRDF = await flexrml.mapData(input, rmlRule);
 
-  return outputRDF;
+  const outputRDFttl = await toTTL(outputRDF);
+
+  return outputRDFttl;
 }
 
 async function addActionPaths(thingName, propertyName, thing) {
