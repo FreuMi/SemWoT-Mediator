@@ -50,8 +50,8 @@ app.put("/power", async function (req, res) {
 });
 
 app.post("/precisionMode", async function (req, res) {
-  console.log(req.body);
-  await sleep(70);
+  console.log("received:", req.body.toString("utf-8"));
+  await sleep(100);
   res.sendStatus(200);
 });
 

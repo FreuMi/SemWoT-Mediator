@@ -1,14 +1,12 @@
 {
   "dependencies": {
-    "@comunica/query-sparql": "^3.2.3",
     "@node-wot/binding-http": "^0.8.16",
     "@node-wot/core": "^0.8.16",
     "axios": "^1.7.5",
     "express": "^4.19.2",
+    "flexrml-node": "^2.0.4",
     "jsonld": "^8.3.2",
     "n3": "^1.21.0",
-    "rdflib": "^2.2.35",
-    "sparql-engine": "^0.8.3",
     "urdf": "https://github.com/derwehr/uRDF.js.git"
   }
 }

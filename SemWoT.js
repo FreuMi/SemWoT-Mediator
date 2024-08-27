@@ -5,11 +5,16 @@ const bodyParser = require("body-parser");
 const jsonld = require("jsonld");
 const axios = require("axios");
 const urdf = require("urdf");
+const { Parser, DataFactory, Writer } = require("n3");
+const { namedNode, blankNode, literal, quad } = DataFactory;
 
 const app = express();
 
 const mediatorIP = "127.0.0.1";
 const mediatorPORT = 3001;
+
+// ID counter
+let actionCounter = 0;
 
 app.use(express.raw({ type: "*/*", limit: "10mb" }));
 // Start server
@@ -172,8 +177,47 @@ async function getWritePropertyInput(nquads) {
   return parsedResult;
 }
 
+async function getActionInput(nquads) {
+  await urdf.clear();
+  // Get type
+  let sparql_query = `
+          PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+          PREFIX aio: <https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#>
+      
+          SELECT ?inputType
+          WHERE {
+            ?x aio:hasInvocationInput ?bn .
+            ?bn rdf:type ?inputType .
+          }`;
+
+  await urdf.load(nquads);
+  results = await urdf.query(sparql_query);
+  const typeResult = results[0]?.["inputType"]?.value ?? undefined;
+
+  // return early if no type is specified
+  if (typeof typeResult == "undefined") {
+    return "";
+  }
+
+  // Get value
+  sparql_query = `
+          PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+          PREFIX aio: <https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#>
+      
+          SELECT ?value
+          WHERE {
+              ?x rdf:value ?value .
+          }`;
+
+  await urdf.load(nquads);
+  results = await urdf.query(sparql_query);
+  const parsedResult = parseData(results[0]["value"].value, typeResult);
+
+  return parsedResult;
+}
+
 async function addReadPropertyPaths(thingName, propertyName, thing) {
-  console.log(`/${thingName}/${propertyName}`);
+  console.log(`Added: /${thingName}/${propertyName}`);
   app.get(`/${thingName}/${propertyName}`, async function (req, res) {
     const result = await thing.readProperty(`${propertyName}`);
     const value = await result.value();
@@ -182,7 +226,7 @@ async function addReadPropertyPaths(thingName, propertyName, thing) {
 }
 
 async function addWritePropertyPaths(thingName, propertyName, thing) {
-  console.log(`/${thingName}/${propertyName}`);
+  console.log(`Added: /${thingName}/${propertyName}`);
   app.put(`/${thingName}/${propertyName}`, async function (req, res) {
     // Get request data
     const RDFrequest = req.body.toString("utf-8");
@@ -190,17 +234,142 @@ async function addWritePropertyPaths(thingName, propertyName, thing) {
     // Query data to write
     const inputValue = await getWritePropertyInput(RDFrequest);
 
-    await thing.writeProperty(`${propertyName}`, inputValue);
-    res.sendStatus(200);
+    // Write value to Thing
+    try {
+      await thing.writeProperty(`${propertyName}`, inputValue);
+      res.sendStatus(200);
+    } catch {
+      res.status(500).send("Connection to Thing failed!");
+    }
   });
 }
 
+const writerEndAsync = (quads) => {
+  const prefixes = {
+    prefixes: {
+      aio: "https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#",
+      rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+      xsd: "http://www.w3.org/2001/XMLSchema#",
+    },
+  };
+  const writer = new Writer(prefixes);
+  quads.forEach((quad) => writer.addQuad(quad));
+
+  return new Promise((resolve, reject) => {
+    writer.end((error, result) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve(result);
+      }
+    });
+  });
+};
+
+async function extendRDFdata(inputRDF) {
+  // Parse existing RDF data
+  const parser = new Parser();
+  const quads = parser.parse(inputRDF);
+
+  // Get Subject
+  let foundBlankNode = null;
+  const targetType =
+    "https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#ActionInvocationInteraction";
+  const rdfType = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+
+  for (const quad of quads) {
+    if (quad._predicate.id === rdfType && quad._object.id === targetType) {
+      foundBlankNode = quad._subject;
+      break;
+    }
+  }
+
+  if (!foundBlankNode) {
+    console.log("error");
+  }
+
+  // Add status
+  const statusQuad = quad(
+    blankNode(foundBlankNode.id.replace(/[_:]/g, "")),
+    namedNode("https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#hasStatus"),
+    literal("initialized")
+  );
+
+  // Add the new quad to set of quads
+  quads.push(statusQuad);
+
+  // Add timestamp
+  const ts = new Date().toISOString();
+  const timestampQuad = quad(
+    blankNode(foundBlankNode.id.replace(/[_:]/g, "")),
+    namedNode("https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#hasResultTime"),
+    literal(ts)
+  );
+
+  quads.push(timestampQuad);
+
+  // Serialize the updated quads to Turtle format
+  const outputRDF = await writerEndAsync(quads);
+  return outputRDF;
+}
+
+async function updateRDFstatus(inputRDF, status) {
+  // Parse existing RDF data
+  const parser = new Parser();
+  const quads = parser.parse(inputRDF);
+
+  // Update status
+  for (const quad of quads) {
+    if (
+      quad._predicate.id ===
+      "https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#hasStatus"
+    ) {
+      quad._object = literal(status);
+      break;
+    }
+  }
+
+  // Update timestamp
+  const ts = new Date().toISOString();
+  for (const quad of quads) {
+    if (
+      quad._predicate.id ===
+      "https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#hasResultTime"
+    ) {
+      quad._object = literal(ts);
+      break;
+    }
+  }
+
+  // Serialize the updated quads to Turtle format
+  const outputRDF = await writerEndAsync(quads);
+  return outputRDF;
+}
+
 async function addActionPaths(thingName, propertyName, thing) {
-  console.log(`/${thingName}/${propertyName}`);
+  console.log(`Added: /${thingName}/${propertyName}`);
   app.post(`/${thingName}/${propertyName}`, async function (req, res) {
-    const rawBody = req.body.toString("utf-8");
-    await thing.invokeAction(`${propertyName}`, rawBody);
-    res.sendStatus(200);
+    // Get request data
+    const RDFrequest = req.body.toString("utf-8");
+
+    // Generate location uri
+    actionCounter++;
+    res.location("/actions/" + actionCounter);
+
+    let outputRDF = await extendRDFdata(RDFrequest);
+    // Add resource to express
+    app.get(`/actions/${actionCounter}`, async function (req, res) {
+      rdfData = res.send(outputRDF);
+    });
+    res.send();
+
+    // Query data to write
+    const inputValue = await getActionInput(RDFrequest);
+    // Update Status to running
+    outputRDF = await updateRDFstatus(outputRDF, "running");
+    await thing.invokeAction(`${propertyName}`, inputValue);
+    // Update Status to finished
+    outputRDF = await updateRDFstatus(outputRDF, "finished");
   });
 }
 
@@ -226,9 +395,11 @@ async function main() {
   for (const element of writeProperties) {
     await addWritePropertyPaths(thingName, element, thing);
   }
-  console.log(writeProperties);
+  // Add routes for actions
   const actions = await getActionName(td);
-  console.log(actions);
+  for (const element of actions) {
+    await addActionPaths(thingName, element, thing);
+  }
 }
 
 main();
