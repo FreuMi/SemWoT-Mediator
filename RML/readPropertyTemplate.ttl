@@ -21,14 +21,13 @@
 
   rr:subjectMap [
     rr:template "obs{id}" ;
-	rr:termType rr:BlankNode ;
-    rr:class aio:ActionInvocationInteraction
+	rr:termType rr:BlankNode 
   ] ;
 
   rr:predicateObjectMap [ 
-    rr:predicate aio:hasInvocationInput ;
+    rr:predicate aio:hasInvocationOutput ;
     rr:objectMap [
-        rr:template "input{id}" ;
+        rr:template "output{id}" ;
 		rr:termType rr:BlankNode
     ]
   ] ;
@@ -53,14 +52,14 @@
   ];
 
   rr:subjectMap [
-    rr:template "input{id}" ;
+    rr:template "output{id}" ;
 	rr:termType rr:BlankNode
   ];
 
   rr:predicateObjectMap [ 
     rr:predicate qudt:numericValue ;
     rr:objectMap [ 
-        rr:template "{input}" ;
+        rr:template "{output}" ;
 		rr:termType rr:Literal ;
 		rr:datatype xsd:${datatype}
     ]

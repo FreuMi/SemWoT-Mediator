@@ -225,12 +225,19 @@ async function getActionInput(nquads) {
   return parsedResult;
 }
 
-async function addReadPropertyPaths(thingName, propertyName, thing) {
+async function addReadPropertyPaths(thingName, propertyName, thing, td) {
   console.log(`Added: /${thingName}/${propertyName}`);
   app.get(`/${thingName}/${propertyName}`, async function (req, res) {
     const result = await thing.readProperty(`${propertyName}`);
     const value = await result.value();
-    res.send(value.toString());
+
+    const outputRDF = await extendReadPropertyRDFdata(
+      value.toString(),
+      td,
+      propertyName
+    );
+
+    res.send(outputRDF);
   });
 }
 
@@ -278,6 +285,67 @@ async function addWritePropertyPaths(thingName, propertyName, thing) {
       res.status(500).send("Connection to Thing failed!");
     }
   });
+}
+
+async function queryReadDatatype(td, propertyName) {
+  await urdf.clear();
+  // Get type
+  let sparql_query = `
+          PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+          PREFIX aio: <https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#>
+          PREFIX td: <https://www.w3.org/2019/wot/td#>
+      
+          SELECT ?type
+          WHERE {
+            ?x td:hasPropertyAffordance ?bn .
+            ?bn td:name "${propertyName}" .
+            ?bn rdf:type ?type .
+          }`;
+
+  await urdf.load(td);
+  results = await urdf.query(sparql_query);
+  const typeResult = results[0]?.["type"]?.value ?? undefined;
+
+  // return early if no type is specified
+  if (typeof typeResult == "undefined") {
+    return "";
+  }
+  console.log("TYPE", typeResult);
+  if (typeResult == "https://www.w3.org/2019/wot/json-schema#StringSchema") {
+    return "string";
+  }
+  return "";
+}
+
+async function extendReadPropertyRDFdata(outputValue, td, propertyName) {
+  const ts = new Date().toISOString();
+
+  const datatype = await queryReadDatatype(td, propertyName);
+
+  // Mapping Rule
+  let rmlRule = fs.readFileSync("./RML/readPropertyTemplate.ttl", {
+    encoding: "utf8",
+    flag: "r",
+  });
+
+  rmlRule = rmlRule.replace("${datatype}", datatype);
+
+  // Input Data
+  const csv_data_1 = `id,timestamp,output
+0,${ts},${outputValue}`;
+
+  // Data structure fore mapping
+  const input = {
+    csv_data_1: csv_data_1,
+  };
+
+  const outputRDF = await flexrml.mapData(input, rmlRule);
+
+  console.log("outout", outputRDF);
+
+  const outputRDFttl = await toTTL(outputRDF);
+
+  return outputRDFttl;
 }
 
 async function extendActionRDFdata(nquads, inputValue) {
@@ -382,7 +450,7 @@ async function main() {
   // Add routes for read properties
   const readProperties = await getReadPropertyName(td);
   for (const element of readProperties) {
-    await addReadPropertyPaths(thingName, element, thing);
+    await addReadPropertyPaths(thingName, element, thing, td);
   }
   // Add routes for write properties
   const writeProperties = await getWritePropertyName(td);
