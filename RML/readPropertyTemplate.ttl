@@ -56,6 +56,8 @@
 	rr:termType rr:BlankNode
   ];
 
+  #unit
+
   rr:predicateObjectMap [ 
     rr:predicate qudt:numericValue ;
     rr:objectMap [ 

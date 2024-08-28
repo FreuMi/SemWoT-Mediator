@@ -3,6 +3,9 @@
     "https://www.w3.org/2019/wot/td/v1",
     "https://www.w3.org/2022/wot/td/v1.1",
     {
+      "qudt": "https://qudt.org/vocab/unit/"
+    },
+    {
       "@language": "en"
     }
   ],
@@ -23,6 +26,7 @@
       "readOnly": true,
       "writeOnly": false,
       "description": "In degrees Celsius",
+      "unit": "qudt:DEG_C",
       "forms": [
         {
           "href": "http://${ip}:${port}/temp",

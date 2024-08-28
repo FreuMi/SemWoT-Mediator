@@ -310,11 +310,39 @@ async function queryReadDatatype(td, propertyName) {
   if (typeof typeResult == "undefined") {
     return "";
   }
-  console.log("TYPE", typeResult);
   if (typeResult == "https://www.w3.org/2019/wot/json-schema#StringSchema") {
     return "string";
   }
   return "";
+}
+
+async function queryReadUnit(td, propertyName) {
+  await urdf.clear();
+  // Get unit
+  let sparql_query = `
+          PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+          PREFIX aio: <https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#>
+          PREFIX td: <https://www.w3.org/2019/wot/td#>
+          PREFIX schema: <http://schema.org/>
+
+          SELECT ?unit
+          WHERE {
+            ?x td:hasPropertyAffordance ?bn .
+            ?bn td:name "${propertyName}"@en .
+            ?bn schema:unitCode ?unit .
+          }`;
+
+  await urdf.load(td);
+  results = await urdf.query(sparql_query);
+  console.log(results);
+  const unit = results[0]?.["unit"]?.value ?? undefined;
+
+  // return early if no type is specified
+  if (typeof unit == "undefined") {
+    return "";
+  }
+
+  return unit;
 }
 
 async function extendReadPropertyRDFdata(outputValue, td, propertyName) {
@@ -330,9 +358,33 @@ async function extendReadPropertyRDFdata(outputValue, td, propertyName) {
 
   rmlRule = rmlRule.replace("${datatype}", datatype);
 
-  // Input Data
-  const csv_data_1 = `id,timestamp,output
+  // Get Unit if available
+  const unit = await queryReadUnit(td, propertyName);
+
+  let csv_data_1;
+  if (unit == "") {
+    // No unit found
+    csv_data_1 = `id,timestamp,output
 0,${ts},${outputValue}`;
+    rmlRule = rmlRule.replace("#unit", "");
+  } else {
+    csv_data_1 = `id,timestamp,output,unit
+0,${ts},${outputValue},${unit}`;
+
+    const rmlUnit = `
+    rr:predicateObjectMap [ 
+    rr:predicate schema:unit ;
+    rr:objectMap [ 
+        rr:template "{unit}" ;
+		rr:termType rr:IRI 
+    ]
+  ] ;
+    `;
+
+    rmlRule = rmlRule.replace("#unit", rmlUnit);
+  }
+
+  console.log(rmlRule);
 
   // Data structure fore mapping
   const input = {
@@ -340,8 +392,6 @@ async function extendReadPropertyRDFdata(outputValue, td, propertyName) {
   };
 
   const outputRDF = await flexrml.mapData(input, rmlRule);
-
-  console.log("outout", outputRDF);
 
   const outputRDFttl = await toTTL(outputRDF);
 
@@ -442,7 +492,7 @@ async function main() {
   // Get TD
   let response = await axios.get(tdIP);
   const td = await convertToRDF(response.data);
-
+  console.log(td);
   // Consume TD
   let thing = await WoT.consume(response.data);
 
