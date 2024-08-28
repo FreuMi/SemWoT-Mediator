@@ -6,7 +6,7 @@ const app = express();
 app.use(express.raw({ type: "*/*", limit: "10mb" }));
 
 const port = 3000;
-const IP = "127.0.0.1";
+const IP = "192.168.188.21";
 
 // Load TD
 let td_template = fs.readFileSync("./thing1.jsonld", {

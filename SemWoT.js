@@ -13,7 +13,7 @@ const { namedNode, blankNode, literal, quad } = DataFactory;
 
 const app = express();
 
-const mediatorIP = "127.0.0.1";
+const mediatorIP = "192.168.188.20";
 const mediatorPORT = 3001;
 
 // ID counter
@@ -25,7 +25,7 @@ app.listen(mediatorPORT, () => {
   console.log(`Mediator listening at ${mediatorIP}:${mediatorPORT}`);
 });
 
-const tdIP = "http://127.0.0.1:3000/";
+const tdIP = "http://192.168.188.21:3000/";
 
 // create servient
 const servient = new Servient();

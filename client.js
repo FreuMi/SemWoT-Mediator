@@ -1,9 +1,9 @@
 const axios = require("axios");
 const urdf = require("urdf");
 
-const SemWotAddr = "http://127.0.0.1:3001";
+const SemWotAddr = "http://192.168.188.20:3001";
 
-const numberRuns = 10;
+const numberRuns = 26;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
