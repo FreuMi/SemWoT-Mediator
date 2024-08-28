@@ -150,18 +150,23 @@ async function getWritePropertyInput(nquads) {
   await urdf.clear();
   // Get type
   let sparql_query = `
-          PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-          PREFIX aio: <https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#>
-      
-          SELECT ?inputType
-          WHERE {
-            ?x aio:hasInvocationInput ?bn .
-            ?bn rdf:type ?inputType .
-          }`;
+  PREFIX aio: <https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#>
+  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+  SELECT ?datatype
+  WHERE {
+    ?s rdf:type aio:WritePropertyInteraction ;
+     aio:hasInvocationInput ?input .
+  
+  ?input rdf:value ?value .
+
+  BIND(DATATYPE(?value) AS ?datatype)
+  }`;
 
   await urdf.load(nquads);
   results = await urdf.query(sparql_query);
-  const typeResult = results[0]["inputType"].value;
+  const typeResult = results[0]["datatype"].value;
 
   // Get value
   sparql_query = `
@@ -184,18 +189,22 @@ async function getDatatype(nquads) {
   await urdf.clear();
   // Get type
   let sparql_query = `
-          PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-          PREFIX aio: <https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#>
-      
-          SELECT ?inputType
-          WHERE {
-            ?x aio:hasInvocationInput ?bn .
-            ?bn rdf:type ?inputType .
-          }`;
+  PREFIX aio: <https://paul.ti.rw.fau.de/~jo00defe/SemWoT/aio#>
+  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+  SELECT ?datatype
+  WHERE {
+    ?s aio:hasInvocationInput ?input .
+    ?input rdf:value ?value .
+
+  BIND(DATATYPE(?value) AS ?datatype)
+  }`;
 
   await urdf.load(nquads);
   results = await urdf.query(sparql_query);
-  const typeResult = results[0]?.["inputType"]?.value ?? undefined;
+
+  const typeResult = results[0]?.["datatype"]?.value ?? undefined;
 
   // return early if no type is specified
   if (typeof typeResult == "undefined") {
@@ -206,7 +215,6 @@ async function getDatatype(nquads) {
 
 async function getActionInput(nquads) {
   const typeResult = await getDatatype(nquads);
-
   await urdf.clear();
   // Get value
   sparql_query = `
@@ -228,8 +236,11 @@ async function getActionInput(nquads) {
 async function addReadPropertyPaths(thingName, propertyName, thing, td) {
   console.log(`Added: /${thingName}/${propertyName}`);
   app.get(`/${thingName}/${propertyName}`, async function (req, res) {
+    const start = performance.now();
     const result = await thing.readProperty(`${propertyName}`);
     const value = await result.value();
+    const stop = performance.now();
+    console.log("Read Property time", stop - start);
 
     const outputRDF = await extendReadPropertyRDFdata(
       value.toString(),
@@ -273,13 +284,15 @@ async function addWritePropertyPaths(thingName, propertyName, thing) {
   app.put(`/${thingName}/${propertyName}`, async function (req, res) {
     // Get request data
     const RDFrequest = req.body.toString("utf-8");
-
     // Query data to write
     const inputValue = await getWritePropertyInput(RDFrequest);
 
     // Write value to Thing
     try {
+      const start = performance.now();
       await thing.writeProperty(`${propertyName}`, inputValue);
+      const stop = performance.now();
+      console.log("Write Property time", stop - start);
       res.sendStatus(200);
     } catch {
       res.status(500).send("Connection to Thing failed!");
@@ -334,7 +347,6 @@ async function queryReadUnit(td, propertyName) {
 
   await urdf.load(td);
   results = await urdf.query(sparql_query);
-  console.log(results);
   const unit = results[0]?.["unit"]?.value ?? undefined;
 
   // return early if no type is specified
@@ -383,8 +395,6 @@ async function extendReadPropertyRDFdata(outputValue, td, propertyName) {
 
     rmlRule = rmlRule.replace("#unit", rmlUnit);
   }
-
-  console.log(rmlRule);
 
   // Data structure fore mapping
   const input = {
@@ -479,7 +489,10 @@ async function addActionPaths(thingName, propertyName, thing) {
 
     // Update Status to running
     outputRDF = await updateRDFstatus("running", inputValue, RDFrequest);
+    const start = performance.now();
     await thing.invokeAction(`${propertyName}`, inputValue);
+    const stop = performance.now();
+    console.log("Invoke Action time", stop - start);
     // Update Status to finished
     outputRDF = await updateRDFstatus("finished", inputValue, RDFrequest);
   });
@@ -492,7 +505,9 @@ async function main() {
   // Get TD
   let response = await axios.get(tdIP);
   const td = await convertToRDF(response.data);
+  console.log("============");
   console.log(td);
+  console.log("============");
   // Consume TD
   let thing = await WoT.consume(response.data);
 

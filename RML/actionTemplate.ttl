@@ -34,6 +34,15 @@
   ] ;
 
   rr:predicateObjectMap [ 
+      rr:predicate aio:hasStatus ;
+      rr:objectMap [ 
+          rr:template "{status}" ;
+      rr:termType rr:Literal ;
+      rr:datatype xsd:string
+      ]
+    ] ;
+
+  rr:predicateObjectMap [ 
     rr:predicate aio:hasResultTime ;
     rr:objectMap [ 
         rr:template "{timestamp}" ;
